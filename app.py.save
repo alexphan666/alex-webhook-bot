@@ -1,0 +1,7 @@
+nano app.pyfrom flask import Flask, request cd ~/Desktop/alex-webhook-bot 
+app = Flask(__name__) ls @app.route('/webhook', methods=['POST']) def 
+webhook(): nano app.py data = request.json nano app.py print("Received 
+signal:", data) python3 app.py return {"status": "ok"}, 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8000)
