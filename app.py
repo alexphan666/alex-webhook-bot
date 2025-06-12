@@ -11,7 +11,7 @@ api_secret = os.getenv("OKX_API_SECRET")
 api_passphrase = os.getenv("OKX_API_PASSPHRASE")
 
 # Khởi tạo đối tượng giao dịch OKX
-tradeAPI = Trade(api_key, api_secret, api_passphrase, False, "https://www.okx.com")
+tradeAPI = TradeAPI(api_key, api_secret, api_passphrase, "https://www.okx.com")
 
 @app.route('/')
 def home():
