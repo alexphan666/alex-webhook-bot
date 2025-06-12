@@ -29,18 +29,18 @@ class TradeAPI:
             'Content-Type': 'application/json'
         }
 
-    def place_order(self, instId, side, ordType, sz):
-        path = '/api/v5/trade/order'
-        url = self.base_url + path
-        body_dict = {
-            "instId": instId,
-            "tdMode": "cross",
-            "side": side,
-            "ordType": ordType,
-            "sz": sz
-        }
-        import json
-        body = json.dumps(body_dict)
-        headers = self._headers('POST', path, body)
-        response = requests.post(url, headers=headers, data=body)
-        return response.json()
+    def place_order(self, instId, side, ordType, sz, tdMode="cross"):
+    path = '/api/v5/trade/order'
+    url = self.base_url + path
+    body_dict = {
+        "instId": instId,
+        "tdMode": tdMode,         # thêm dòng này
+        "side": side,
+        "ordType": ordType,
+        "sz": sz
+    }
+    import json
+    body = json.dumps(body_dict)
+    headers = self._headers('POST', path, body)
+    response = requests.post(url, headers=headers, data=body)
+    return response.json()
