@@ -9,6 +9,9 @@ app = Flask(__name__)
 api_key = os.getenv("OKX_API_KEY")
 api_secret = os.getenv("OKX_API_SECRET")
 api_passphrase = os.getenv("OKX_API_PASSPHRASE")
+print("🔑 API_KEY:", api_key)
+print("🔐 SECRET_KEY:", api_secret)
+print("🔐 PASSPHRASE:", api_passphrase)
 
 # Khởi tạo đối tượng giao dịch OKX
 tradeAPI = TradeAPI(api_key, api_secret, api_passphrase, "https://www.okx.com")
