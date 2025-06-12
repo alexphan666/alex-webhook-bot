@@ -1,5 +1,4 @@
 flask
 requests
 gunicorn
-requests
-okx
+okx==0.0.50p
