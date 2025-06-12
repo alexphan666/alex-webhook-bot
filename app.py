@@ -1,7 +1,7 @@
 import os
 import json
 from flask import Flask, request
-from okx import Trade
+from okx.Trade import TradeAPI
 
 app = Flask(__name__)
 
