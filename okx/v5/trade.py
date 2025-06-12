@@ -30,12 +30,12 @@ class TradeAPI:
             'Content-Type': 'application/json'
         }
 
-    def place_order(self, instId, side, ordType, sz):
+    def place_order(self, instId, tdMode, side, ordType, sz):
         path = '/api/v5/trade/order'
         url = self.base_url + path
         body_dict = {
             "instId": instId,
-            "tdMode": "isolated",
+            "tdMode": tdMode,        # Đã thêm dòng này
             "side": side,
             "ordType": ordType,
             "sz": sz
