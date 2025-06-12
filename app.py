@@ -41,7 +41,7 @@ def send_order_to_okx(coin, side):
     method = "POST"
 
     body = {
-        "instId": coin,
+        "instId": coin,  # Phải là AAVE-USDT chứ không phải AAVEUSDT
         "tdMode": "isolated",
         "side": side,
         "ordType": "market",
@@ -62,8 +62,16 @@ def send_order_to_okx(coin, side):
         "Content-Type": "application/json"
     }
 
+    # Gửi lệnh đến OKX
     response = requests.post(url, headers=headers, json=body)
+
+    # Log tất cả thông tin
+    print("💬 OKX Request Body:", json.dumps(body))
     print("💬 OKX Status Code:", response.status_code)
     print("💬 OKX Raw Response:", response.text)
 
-    return response.json()
+    # Nếu response không phải JSON → raise lỗi rõ ràng
+    try:
+        return response.json()
+    except Exception:
+        raise Exception(f"Lỗi parse JSON từ OKX: {response.text}")
