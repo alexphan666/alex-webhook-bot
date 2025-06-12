@@ -1,54 +1,69 @@
-import os
-import json
 from flask import Flask, request
-from okx.v5.trade import TradeAPI
+import os
+import time
+import hmac
+import hashlib
+import base64
+import requests
+import json
 
 app = Flask(__name__)
 
-# Lấy biến môi trường OKX
-api_key = os.getenv("OKX_API_KEY")
-api_secret = os.getenv("OKX_API_SECRET")
-api_passphrase = os.getenv("OKX_API_PASSPHRASE")
-print("🔑 API_KEY:", api_key)
-print("🔐 SECRET_KEY:", api_secret)
-print("🔐 PASSPHRASE:", api_passphrase)
-
-# Khởi tạo đối tượng giao dịch OKX
-tradeAPI = TradeAPI(api_key, api_secret, api_passphrase, "https://www.okx.com")
-
 @app.route('/')
-def home():
-    return 'AlexWebhookBot is running!'
+def index():
+    return 'Alex Webhook Bot is running 🚀'
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
     print("📩 Nhận tín hiệu:", data)
 
-    symbol = data.get("coin")
-    signal = data.get("signal")
-
-    # Chỉ xử lý AAVEUSDT
-    if symbol != "AAVEUSDT":
-        print(f"⚠️ Bỏ qua {symbol}, chỉ giao dịch AAVEUSDT")
-        return {"status": "ignored"}, 200
-
-    side = "buy" if signal == "buy" else "sell"
+    coin = data.get('coin')
+    side = data.get('signal')  # 'buy' hoặc 'sell'
+    
+    if not coin or not side:
+        return {'error': 'Thiếu coin hoặc signal'}, 400
 
     try:
-        order = tradeAPI.place_order(
-            instId="AAVE-USDT-SWAP",
-            tdMode="isolated",
-            side=side,
-            ordType="market",
-            sz="1"
-        )
-        print("✅ Đã gửi lệnh:", order)
-        return {"status": "order_sent"}, 200
+        response = send_order_to_okx(coin, side)
+        print("✅ OKX Response:", response)
+        return {'status': 'Đã gửi lệnh thành công', 'response': response}
     except Exception as e:
-        print("❌ Lỗi khi gửi lệnh:", e)
-        return {"status": "error", "message": str(e)}, 500
+        print("❌ Lỗi khi gửi lệnh:", str(e))
+        return {'error': str(e)}, 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+def send_order_to_okx(coin, side):
+    api_key = os.getenv("OKX_API_KEY")
+    secret_key = os.getenv("OKX_API_SECRET")
+    passphrase = os.getenv("OKX_API_PASSPHRASE")
 
+    url = "https://www.okx.com/api/v5/trade/order"
+    method = "POST"
+
+    body = {
+        "instId": coin,
+        "tdMode": "isolated",
+        "side": side,
+        "ordType": "market",
+        "sz": "1"
+    }
+
+    timestamp = str(time.time())
+    prehash = f"{timestamp}{method}/api/v5/trade/order{json.dumps(body)}"
+    sign = base64.b64encode(
+        hmac.new(secret_key.encode(), prehash.encode(), hashlib.sha256).digest()
+    ).decode()
+
+    headers = {
+        "OK-ACCESS-KEY": api_key,
+        "OK-ACCESS-SIGN": sign,
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": passphrase,
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, headers=headers, json=body)
+    print("💬 OKX Status Code:", response.status_code)
+    print("💬 OKX Raw Response:", response.text)
+
+    return response.json()
