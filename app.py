@@ -1,7 +1,7 @@
 import os
 import json
 from flask import Flask, request
-from okx.v5 import Trade
+from okx import Trade
 
 app = Flask(__name__)
 
