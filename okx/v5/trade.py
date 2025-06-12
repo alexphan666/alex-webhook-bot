@@ -2,6 +2,7 @@ import requests
 import time
 import hmac
 import hashlib
+import json
 
 class TradeAPI:
     def __init__(self, api_key, secret_key, passphrase, base_url="https://www.okx.com"):
@@ -29,18 +30,17 @@ class TradeAPI:
             'Content-Type': 'application/json'
         }
 
-    def place_order(self, instId, side, ordType, sz, tdMode="cross"):
+    def place_order(self, instId, side, ordType, sz):
         path = '/api/v5/trade/order'
-    url = self.base_url + path
-    body_dict = {
-        "instId": instId,
-        "tdMode": tdMode,         # thêm dòng này
-        "side": side,
-        "ordType": ordType,
-        "sz": sz
-    }
-    import json
-    body = json.dumps(body_dict)
-    headers = self._headers('POST', path, body)
-    response = requests.post(url, headers=headers, data=body)
-    return response.json()
+        url = self.base_url + path
+        body_dict = {
+            "instId": instId,
+            "tdMode": "isolated",
+            "side": side,
+            "ordType": ordType,
+            "sz": sz
+        }
+        body = json.dumps(body_dict)
+        headers = self._headers('POST', path, body)
+        response = requests.post(url, headers=headers, data=body)
+        return response.json()
