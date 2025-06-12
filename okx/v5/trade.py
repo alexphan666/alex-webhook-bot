@@ -30,7 +30,7 @@ class TradeAPI:
         }
 
     def place_order(self, instId, side, ordType, sz, tdMode="cross"):
-    path = '/api/v5/trade/order'
+        path = '/api/v5/trade/order'
     url = self.base_url + path
     body_dict = {
         "instId": instId,
