@@ -24,6 +24,10 @@ def webhook():
     if not coin or not side:
         return {'error': 'Thiếu coin hoặc signal'}, 400
 
+    valid_coins = ["AAVE-USDT"]
+    if coin not in valid_coins:
+        return {'error': f"Coin {coin} không được phép giao dịch"}, 400
+
     try:
         response = send_order_to_okx(coin, side)
         print("✅ OKX Response:", response)
@@ -37,15 +41,18 @@ def send_order_to_okx(coin, side):
     secret_key = os.getenv("OKX_API_SECRET")
     passphrase = os.getenv("OKX_API_PASSPHRASE")
 
+    if not all([api_key, secret_key, passphrase]):
+        raise Exception("Thiếu thông tin API Key, Secret hoặc Passphrase từ biến môi trường.")
+
     url = "https://www.okx.com/api/v5/trade/order"
     method = "POST"
 
     body = {
-        "instId": coin,                # Ví dụ: "AAVE-USDT"
+        "instId": coin,
         "tdMode": "isolated",
-        "side": side,                  # "buy" hoặc "sell"
+        "side": side,
         "ordType": "market",
-        "sz": "1"                      # Khối lượng (test là 1)
+        "sz": "1"
     }
 
     timestamp = str(time.time())
@@ -60,7 +67,10 @@ def send_order_to_okx(coin, side):
         "OK-ACCESS-TIMESTAMP": timestamp,
         "OK-ACCESS-PASSPHRASE": passphrase,
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.okx.com/",
+        "Origin": "https://www.okx.com"
     }
 
     print("🔐 Headers:", headers)
