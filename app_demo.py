@@ -4,16 +4,17 @@ import os
 
 app = Flask(__name__)
 
-# Telegram bot info (nên dùng biến môi trường thực tế)
+# === Cấu hình từ biến môi trường ===
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# OKX API (demo key giả lập)
 OKX_API_KEY = os.getenv("OKX_API_KEY")
 OKX_API_SECRET = os.getenv("OKX_API_SECRET")
 OKX_API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE")
-OKX_BASE_URL = "https://www.okx.com"  # Dùng demo account OKX thực tế
 
+OKX_BASE_URL = "https://www.okx.com"  # hoặc demo nếu bạn dùng OKX demo
+
+# === Hàm gửi tin nhắn Telegram ===
 def send_telegram_message(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[WARN] Chưa có TELEGRAM_BOT_TOKEN hoặc CHAT_ID")
@@ -29,15 +30,16 @@ def send_telegram_message(message):
     except Exception as e:
         print(f"[TELEGRAM ERROR] {e}")
 
+# === Giả lập gửi lệnh (chưa gọi API thật của OKX) ===
 def place_order(symbol, side, amount):
     print(f"[DEMO ORDER] Gửi lệnh {side.upper()} {amount} USDT với {symbol}")
-    # Đây là đoạn giả lập gửi lệnh – thay bằng OKX real API sau
     return {"status": "success", "symbol": symbol, "side": side, "amount": amount}
 
 @app.route('/')
 def home():
     return "Alex Demo Bot is running!"
 
+# === Webhook nhận tín hiệu từ TradingView ===
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
@@ -80,5 +82,6 @@ def webhook():
     send_telegram_message(f"[DEMO] Đã gửi lệnh: {signal.upper()} - {symbol} - {amount} USDT")
     return f"Order placed: {order_response}", 200
 
+# === Chạy app Flask (local testing) ===
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5001)  # dùng port khác nếu 5000 bị trùng
