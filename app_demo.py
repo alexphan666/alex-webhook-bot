@@ -99,7 +99,8 @@ def webhook():
         return "Symbol not supported", 400
 
     amount = "10"  # Khối lượng demo cố định
-if signal.lower() == "buy":
+
+    if signal.lower() == "buy":
         order_response = place_order(symbol, "buy", amount)
     elif signal.lower() == "sell":
         order_response = place_order(symbol, "sell", amount)
