@@ -24,10 +24,7 @@ app = Flask(__name__)
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    try:
-        requests.post(url, json=payload, timeout=5)
-    except Exception as e:
-        print(f"❌ Lỗi gửi Telegram: {e}")
+    requests.post(url, json=payload)
 
 # ---------------------------
 # 3. Gửi lệnh thị trường vào OKX DEMO
@@ -35,6 +32,14 @@ def send_telegram_message(message):
 def place_order(symbol, side, amount):
     url = "https://www.okx.com/api/v5/trade/order"
     timestamp = str(time.time())
+
+    headers = {
+        "OK-ACCESS-KEY": OKX_API_KEY,
+        "OK-ACCESS-SIGN": generate_signature(timestamp, 'POST', '/api/v5/trade/order', ''),
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": OKX_API_PASSPHRASE,
+        "Content-Type": "application/json"
+    }
 
     data = {
         "instId": symbol,
@@ -44,17 +49,7 @@ def place_order(symbol, side, amount):
         "sz": amount
     }
 
-    body = json.dumps(data)
-
-    headers = {
-        "OK-ACCESS-KEY": OKX_API_KEY,
-        "OK-ACCESS-SIGN": generate_signature(timestamp, 'POST', '/api/v5/trade/order', body),
-        "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS-PASSPHRASE": OKX_API_PASSPHRASE,
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(url, headers=headers, data=body)
+    response = requests.post(url, headers=headers, data=json.dumps(data))
     return response.json()
 
 # ---------------------------
@@ -71,7 +66,7 @@ def generate_signature(timestamp, method, request_path, body):
 # ---------------------------
 # 5. Nhận tín hiệu từ TradingView
 # ---------------------------
-@app.route('/webhook-demo', methods=['POST'])
+@app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
     
@@ -96,14 +91,15 @@ def webhook():
     if not symbol:
         return "Symbol not supported", 400
 
-    amount = "10"  # Điều chỉnh khối lượng nếu cần
+    # Khối lượng mỗi lệnh DEMO (có thể chỉnh sửa tuỳ ý)
+    amount = "10"  # 10 USDT
 
     if signal.lower() == "buy":
         order_response = place_order(symbol, "buy", amount)
-elif signal.lower() == "sell":
+    elif signal.lower() == "sell":
         order_response = place_order(symbol, "sell", amount)
     else:
-        return "Unknown signal", 400
+	return "Unknown signal", 400
 
     return f"Order placed: {order_response}", 200
 
