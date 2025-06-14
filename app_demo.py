@@ -70,12 +70,13 @@ def place_order(symbol, side, amount):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
+    print("Received payload:", data)  # debug
 
     if data is None:
         return 'No data received', 400
 
     signal = data.get("signal")
-    coin = data.get("coin")
+    coin = data.get("symbol")  # <== sửa từ "coin" sang "symbol"
 
     if not signal or not coin:
         return 'Missing signal or coin', 400
@@ -90,16 +91,16 @@ def webhook():
         "BCH": "BCH-USDT"
     }
 
-    symbol = symbol_map.get(coin.upper())
-    if not symbol:
+    inst_id = symbol_map.get(coin.upper())
+    if not inst_id:
         return "Symbol not supported", 400
 
     amount = "10"  # Khối lượng demo cố định
 
     if signal.lower() == "buy":
-        order_response = place_order(symbol, "buy", amount)
+        order_response = place_order(inst_id, "buy", amount)
     elif signal.lower() == "sell":
-        order_response = place_order(symbol, "sell", amount)
+        order_response = place_order(inst_id, "sell", amount)
     else:
         return "Unknown signal", 400
 
