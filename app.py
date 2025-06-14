@@ -6,6 +6,10 @@ import hashlib
 import base64
 import requests
 import json
+from datetime import datetime, timezone
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -55,7 +59,8 @@ def send_order_to_okx(coin, side):
         "sz": "1"
     }
 
-    timestamp = str(time.time())
+    # ✅ Dùng định dạng timestamp chuẩn RFC3339 cho OKX
+    timestamp = datetime.now(timezone.utc).isoformat(timespec='seconds').replace("+00:00", "Z")
     prehash = f"{timestamp}{method}/api/v5/trade/order{json.dumps(body)}"
     sign = base64.b64encode(
         hmac.new(secret_key.encode(), prehash.encode(), hashlib.sha256).digest()
@@ -87,4 +92,4 @@ def send_order_to_okx(coin, side):
         raise Exception("Lỗi phản hồi từ OKX: Không phải định dạng JSON")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5050)
