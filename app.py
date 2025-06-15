@@ -43,6 +43,22 @@ def place_order(symbol, side, amount):
 def home():
     return "✅ Alex Demo Bot is running!"
 
+@app.route('/ping')
+def ping():
+    return "pong", 200
+
+@app.route("/test-telegram")
+def test_telegram():
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return "❌ Thiếu cấu hình TELEGRAM_BOT_TOKEN hoặc TELEGRAM_CHAT_ID", 400
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": "✅ Bot Telegram hoạt động bình thường!"}
+    try:
+        r = requests.post(url, json=payload)
+        return f"Status: {r.status_code} - {r.text}", 200
+    except Exception as e:
+        return f"Lỗi gửi Telegram: {str(e)}", 500
+
 # === Webhook chính từ TradingView ===
 @app.route('/webhook-demo', methods=['POST'])
 def webhook_demo():
@@ -100,6 +116,7 @@ def webhook_demo():
     send_telegram_message(f"✅ Đã gửi lệnh {side.upper()} {symbol} - {amount} USDT")
     return "OK", 200
 
-# === Chạy local ===
+# === Khởi chạy trên Render ===
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(debug=True, host='0.0.0.0', port=port)
