@@ -133,8 +133,7 @@ def webhook_demo():
     if level == 1:
         amount = 200
     elif level == 2:
-
-amount = 350
+        amount = 350
     elif level == 3:
         amount = 500
     else:
