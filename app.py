@@ -1,3 +1,6 @@
+Buy Bitcoin & Crypto | Crypto Exchange, App & Wallet
+OKX - Buy BTC, ETH, XRP and more on OKX, a leading crypto exchange – explore Web3, invest in DeFi and NFTs. Register now and experience the future of finance.
+
 import os
 import time
 import base64
@@ -9,18 +12,17 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# Telegram
+# Token Telegram và chat_id (nên để ở biến môi trường)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Trạng thái mỗi coin
+# Trạng thái từng coin
 coin_state = {
     "AAVE-USDT": {"active": False, "level": 1, "entry_price": None},
     "BTC-USDT": {"active": False, "level": 1, "entry_price": None},
     "BCH-USDT": {"active": False, "level": 1, "entry_price": None},
 }
 
-# Gửi thông báo Telegram
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
@@ -29,64 +31,74 @@ def send_telegram_message(message):
         "parse_mode": "HTML"
     }
     try:
-        requests.post(url, json=payload)
+        response = requests.post(url, json=payload)
+        print("[TELEGRAM]", response.status_code, "-", response.text)
     except Exception as e:
-        print("[TELEGRAM ERROR]", e)
+        print("[TELEGRAM ERROR]", str(e))
 
-# Ký signature cho OKX
 def generate_signature(timestamp, method, request_path, body, secret_key):
-    message = f"{timestamp}{method}{request_path}{body}"
-    mac = hmac.new(secret_key.encode(), message.encode(), hashlib.sha256)
+    message = f'{timestamp}{method}{request_path}{body}'
+    mac = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), digestmod=hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
-# Gửi lệnh lên OKX DEMO
 def place_order(symbol, side, amount):
+    base_url = "https://www.okx.com"
+    endpoint = "/api/v5/trade/order"
+
+    symbol_map = {
+        "BTC-USDT": "BTC-USDT-SWAP",
+        "BCH-USDT": "BCH-USDT-SWAP",
+        "AAVE-USDT": "AAVE-USDT-SWAP"
+    }
+    instId = symbol_map.get(symbol, symbol)
+
+    timestamp = str(time.time())
+    body = {
+        "instId": instId,
+        "tdMode": "cross",
+        "side": side,
+        "ordType": "market",
+        "sz": str(amount)
+    }
+    body_json = json.dumps(body)
+
+    # Lấy API Key từ biến môi trường
+    api_key = os.getenv("OKX_API_KEY")
+    api_secret = os.getenv("OKX_API_SECRET")
+    passphrase = os.getenv("OKX_API_PASSPHRASE")
+
+    # Kiểm tra biến môi trường
+    if not all([api_key, api_secret, passphrase]):
+        error_msg = "❌ Thiếu biến môi trường OKX_API_KEY / OKX_API_SECRET / OKX_API_PASSPHRASE"
+        print(error_msg)
+        return {"error": error_msg}
+
     try:
-        base_url = "https://www.okx.com"  # OKX Demo cũng dùng URL này
-        endpoint = "/api/v5/trade/order"
-
-        symbol_map = {
-            "BTC-USDT": "BTC-USDT-SWAP",
-            "BCH-USDT": "BCH-USDT-SWAP",
-            "AAVE-USDT": "AAVE-USDT-SWAP"
-        }
-        instId = symbol_map.get(symbol, symbol)
-
-        timestamp = str(time.time())
-        body = {
-            "instId": instId,
-            "tdMode": "cross",
-            "side": side,
-            "ordType": "market",
-            "sz": str(amount)
-        }
-        body_json = json.dumps(body)
-
         signature = generate_signature(
             timestamp,
             "POST",
             endpoint,
             body_json,
-            os.getenv("OKX_DEMO_API_SECRET")
+            api_secret
         )
+    except Exception as e:
+        return {"error": f"Lỗi tạo chữ ký: {e}"}
 
-        headers = {
-            "OK-ACCESS-KEY": os.getenv("OKX_DEMO_API_KEY"),
-            "OK-ACCESS-SIGN": signature,
-            "OK-ACCESS-TIMESTAMP": timestamp,
-            "OK-ACCESS-PASSPHRASE": os.getenv("OKX_DEMO_API_PASSPHRASE"),
-            "Content-Type": "application/json"
-        }
+    headers = {
+        "OK-ACCESS-KEY": api_key,
+        "OK-ACCESS-SIGN": signature,
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": passphrase,
+        "Content-Type": "application/json"
+    }
 
+    try:
         response = requests.post(base_url + endpoint, headers=headers, data=body_json)
-        print("[OKX DEMO ORDER]", response.status_code, response.text)
-
+        print("[OKX ORDER]", response.status_code, response.text)
         return response.json()
     except Exception as e:
-        send_telegram_message(f"❌ Lỗi gửi lệnh OKX DEMO: {str(e)}")
         return {"error": str(e)}
 
-# Route webhook từ TradingView
 @app.route('/webhook-demo', methods=['POST'])
 def webhook_demo():
     data = request.get_json()
@@ -113,35 +125,36 @@ def webhook_demo():
         send_telegram_message(f"⚠️ Coin không hỗ trợ: {coin}")
         return "Unsupported coin", 400
 
-    # Xác định số tiền theo bậc
+    # Tính số tiền theo bậc
     level = coin_state[symbol]["level"]
-    amount = {
-        1: 200,
-        2: 350,
-        3: 500
-    }.get(level, 200)
+    amount = 200 if level == 1 else 350 if level == 2 else 500
+    amount = str(amount)
 
-    # Buy / Sell
-    side = signal.lower()
-    if side not in ["buy", "sell"]:
+    # Xác định hướng lệnh
+    if signal.lower() == "buy":
+        side = "buy"
+    elif signal.lower() == "sell":
+        side = "sell"
+    else:
         send_telegram_message(f"❌ Tín hiệu không hợp lệ: {signal}")
         return "Invalid signal", 400
 
-    # Gửi lệnh demo
-    order_response = place_order(symbol, side, amount)
+    # Gửi lệnh
 
-    # Kiểm tra phản hồi
-    if "error" in order_response or order_response.get("code") != "0":
+order_response = place_order(symbol, side, amount)
+
+    if "error" in order_response:
         send_telegram_message(f"❌ Gửi lệnh DEMO thất bại: {symbol} - {side.upper()} {amount} USDT\nChi tiết: {order_response}")
         return "Order failed", 500
 
     # Cập nhật trạng thái
     coin_state[symbol]["active"] = True
+    coin_state[symbol]["entry_price"] = 9999  # Placeholder
 
-    coin_state[symbol]["entry_price"] = 9999  # placeholder
+    # Gửi thông báo
+    send_telegram_message(f"✅ Đã gửi lệnh DEMO {side.upper()} {symbol} - {amount} USDT")
 
-    send_telegram_message(f"✅ ĐÃ GỬI LỆNH DEMO: <b>{side.upper()}</b> {symbol} - {amount} USDT")
-    print("[DEMO ORDER SUCCESS]", order_response)
+    print("[ORDER RESPONSE]", order_response)
     return "OK", 200
 
 if __name__ == '__main__':
