@@ -1,106 +1,38 @@
+import os
 from flask import Flask, request
 import requests
-import os
-import time
-import hmac
-import base64
-import json
 
 app = Flask(__name__)
 
-# === Cấu hình từ biến môi trường ===
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# Token Telegram và chat_id (nên để ở biến môi trường khi chạy thật)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-OKX_API_KEY = os.getenv("OKX_API_KEY")
-OKX_API_SECRET = os.getenv("OKX_API_SECRET")
-OKX_API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE")
-
-OKX_BASE_URL = "https://www.okx.com"
-
-# === Trạng thái từng coin ===
+# Trạng thái từng coin
 coin_state = {
-    "BTC-USDT": {"level": 1, "entry_price": None, "active": False},
-    "AAVE-USDT": {"level": 1, "entry_price": None, "active": False},
-    "BCH-USDT": {"level": 1, "entry_price": None, "active": False},
+    "AAVE-USDT": {"active": False, "level": 1, "entry_price": None},
+    "BTC-USDT": {"active": False, "level": 1, "entry_price": None},
+    "BCH-USDT": {"active": False, "level": 1, "entry_price": None},
 }
 
-# === Gửi tin nhắn Telegram ===
+
 def send_telegram_message(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("[TELEGRAM] Thiếu cấu hình token/chat_id")
-        return
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    try:
-        r = requests.post(url, json=payload)
-        print(f"[TELEGRAM] Status: {r.status_code} - {r.text}")
-    except Exception as e:
-        print(f"[TELEGRAM ERROR] {e}")
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML"
+    }
+    response = requests.post(url, json=payload)
+    print("[TELEGRAM]", response.status_code, "-", response.text)
 
-# === Gửi lệnh thực trên OKX Demo ===
+
 def place_order(symbol, side, amount):
-    try:
-        timestamp = str(time.time())
-        method = "POST"
-        request_path = "/api/v5/trade/order"
-        url = OKX_BASE_URL + request_path
+    # Đây là demo - thực tế nên dùng OKX Demo API
+    print(f"[ORDER DEMO] Gửi lệnh {side.upper()} {symbol} với số tiền {amount} USDT")
+    return {"status": "success", "side": side, "symbol": symbol, "amount": amount}
 
-        body = {
-            "instId": symbol,
-            "tdMode": "cash",
-            "side": side,
-            "ordType": "market",
-            "sz": str(amount),
-        }
 
-        message = timestamp + method + request_path + json.dumps(body)
-        signature = hmac.new(
-            OKX_API_SECRET.encode("utf-8"),
-            message.encode("utf-8"),
-            digestmod="sha256"
-        ).digest()
-        signature_base64 = base64.b64encode(signature).decode()
-
-        headers = {
-            "OK-ACCESS-KEY": OKX_API_KEY,
-            "OK-ACCESS-SIGN": signature_base64,
-            "OK-ACCESS-TIMESTAMP": timestamp,
-            "OK-ACCESS-PASSPHRASE": OKX_API_PASSPHRASE,
-            "Content-Type": "application/json",
-            "x-simulated-trading": "1",  # CHẾ ĐỘ DEMO
-        }
-
-        response = requests.post(url, headers=headers, json=body)
-        try:
-            return response.json()
-        except ValueError:
-            return {"error": response.text}
-
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.route('/')
-def home():
-    return "✅ Alex Demo Bot is running!"
-
-@app.route('/ping')
-def ping():
-    return "pong", 200
-
-@app.route("/test-telegram")
-def test_telegram():
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return "❌ Thiếu cấu hình TELEGRAM_BOT_TOKEN hoặc TELEGRAM_CHAT_ID", 400
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": "✅ Bot Telegram hoạt động bình thường!"}
-    try:
-        r = requests.post(url, json=payload)
-        return f"Status: {r.status_code} - {r.text}", 200
-    except Exception as e:
-        return f"Lỗi gửi Telegram: {str(e)}", 500
-
-# === Webhook từ TradingView ===
 @app.route('/webhook-demo', methods=['POST'])
 def webhook_demo():
     data = request.get_json()
@@ -122,13 +54,12 @@ def webhook_demo():
         "AAVE": "AAVE-USDT",
         "BCH": "BCH-USDT"
     }
-
     symbol = symbol_map.get(coin.upper())
     if not symbol:
         send_telegram_message(f"⚠️ Coin không hỗ trợ: {coin}")
         return "Unsupported coin", 400
 
-    # Tính số tiền theo từng bậc
+    # Tính số tiền theo bậc (level)
     level = coin_state[symbol]["level"]
     if level == 1:
         amount = 200
@@ -140,7 +71,7 @@ def webhook_demo():
         amount = 200
     amount = str(amount)
 
-    # Xử lý lệnh mua/bán
+    # Xác định hướng lệnh
     if signal.lower() == "buy":
         side = "buy"
     elif signal.lower() == "sell":
@@ -149,21 +80,20 @@ def webhook_demo():
         send_telegram_message(f"❌ Tín hiệu không hợp lệ: {signal}")
         return "Invalid signal", 400
 
-    # Gửi lệnh
     order_response = place_order(symbol, side, amount)
 
     # Cập nhật trạng thái
     coin_state[symbol]["active"] = True
-    coin_state[symbol]["entry_price"] = 9999  # Placeholder, sau này sẽ dùng giá thật
+    coin_state[symbol]["entry_price"] = 9999  # Placeholder
 
-    # Gửi phản hồi về Telegram
-    send_telegram_message(
-        f"✅ Đã gửi lệnh {side.upper()} {symbol} - {amount} USDT\n\n📥 Phản hồi: {order_response}"
-    )
+    # Gửi thông báo rút gọn về Telegram
+    send_telegram_message(f"✅ Đã gửi lệnh {side.upper()} {symbol} - {amount} USDT")
+
+    # Ghi log phản hồi ra console để kiểm tra
+    print("[ORDER RESPONSE]", order_response)
 
     return "OK", 200
 
-# === Chạy ứng dụng ===
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=10000)
