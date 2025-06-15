@@ -164,6 +164,6 @@ def webhook_demo():
     return "OK", 200
 
 # === Chạy ứng dụng ===
-if name == '__main__':
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(debug=True, host='0.0.0.0', port=port)
