@@ -89,7 +89,7 @@ def home():
 
 @app.route('/ping')
 def ping():
-    return "pong", 200
+    return "xong", 200
 
 @app.route("/test-telegram")
 def test_telegram():
@@ -127,8 +127,7 @@ def webhook_demo():
     }
     symbol = symbol_map.get(coin.upper())
     if not symbol:
-
-send_telegram_message(f"⚠️ Coin không hỗ trợ: {coin}")
+        send_telegram_message(f"⚠️ Coin không hỗ trợ: {coin}")
         return "Unsupported coin", 400
 
     # Tính số tiền theo từng bậc
