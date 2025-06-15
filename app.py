@@ -1,6 +1,13 @@
+Buy Bitcoin & Crypto | Crypto Exchange, App & Wallet
+OKX - Buy BTC, ETH, XRP and more on OKX, a leading crypto exchange – explore Web3, invest in DeFi and NFTs. Register now and experience the future of finance.
+
 from flask import Flask, request
 import requests
 import os
+import json
+import time
+import hmac
+import base64
 
 app = Flask(__name__)
 
@@ -34,10 +41,50 @@ def send_telegram_message(message):
     except Exception as e:
         print(f"[TELEGRAM ERROR] {e}")
 
-# === Gửi lệnh demo (chưa kết nối OKX thật) ===
+# === Tạo chữ ký OKX ===
+def generate_signature(timestamp, method, request_path, body, secret_key):
+    message = f'{timestamp}{method}{request_path}{body}'
+    mac = hmac.new(bytes(secret_key, encoding='utf-8'), bytes(message, encoding='utf-8'), digestmod='sha256')
+    d = mac.digest()
+    return base64.b64encode(d).decode('utf-8')
+
+# === Gửi lệnh demo lên OKX ===
 def place_order(symbol, side, amount):
     print(f"[DEMO] Gửi lệnh {side.upper()} {amount} USDT với {symbol}")
-    return {"status": "demo success", "symbol": symbol, "side": side, "amount": amount}
+
+    url = "/api/v5/trade/order"
+    full_url = OKX_BASE_URL + url
+
+    timestamp = str(time.time())
+    method = "POST"
+    body = {
+        "instId": symbol,
+        "tdMode": "cross",
+        "side": side,
+        "ordType": "market",
+        "sz": amount,
+        "posSide": "long" if side == "buy" else "short"
+    }
+
+    body_str = json.dumps(body)
+    sign = generate_signature(timestamp, method, url, body_str, OKX_API_SECRET)
+
+    headers = {
+        "OK-ACCESS-KEY": OKX_API_KEY,
+        "OK-ACCESS-SIGN": sign,
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": OKX_API_PASSPHRASE,
+        "Content-Type": "application/json",
+        "x-simulated-trading": "1"  # Bật chế độ demo
+    }
+
+    try:
+        response = requests.post(full_url, headers=headers, data=body_str)
+        print("[OKX DEMO] Response:", response.text)
+        return response.json()
+    except Exception as e:
+        print(f"[ERROR] Gửi lệnh thất bại: {e}")
+        return {"error": str(e)}
 
 @app.route('/')
 def home():
@@ -83,7 +130,8 @@ def webhook_demo():
     }
     symbol = symbol_map.get(coin.upper())
     if not symbol:
-        send_telegram_message(f"⚠️ Coin không hỗ trợ: {coin}")
+
+send_telegram_message(f"⚠️ Coin không hỗ trợ: {coin}")
         return "Unsupported coin", 400
 
     # Tính số tiền theo từng bậc
@@ -113,7 +161,7 @@ def webhook_demo():
     coin_state[symbol]["active"] = True
     coin_state[symbol]["entry_price"] = 9999  # Placeholder
 
-    send_telegram_message(f"✅ Đã gửi lệnh {side.upper()} {symbol} - {amount} USDT")
+    send_telegram_message(f"✅ Đã gửi lệnh {side.upper()} {symbol} - {amount} USDT\n\n📥 Phản hồi: {order_response}")
     return "OK", 200
 
 # === Khởi chạy trên Render ===
