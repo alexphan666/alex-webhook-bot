@@ -5,7 +5,7 @@ import requests
 app = Flask(__name__)
 
 # Token Telegram và chat_id (nên để ở biến môi trường khi chạy thật)
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Trạng thái từng coin
