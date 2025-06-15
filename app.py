@@ -1,6 +1,3 @@
-Buy Bitcoin & Crypto | Crypto Exchange, App & Wallet
-OKX - Buy BTC, ETH, XRP and more on OKX, a leading crypto exchange – explore Web3, invest in DeFi and NFTs. Register now and experience the future of finance.
-
 from flask import Flask, request
 import requests
 import os
