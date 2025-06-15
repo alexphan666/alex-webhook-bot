@@ -1,6 +1,11 @@
 import os
-from flask import Flask, request
+import time
+import base64
+import hmac
+import hashlib
+import json
 import requests
+from flask import Flask, request
 
 app = Flask(__name__)
 
@@ -15,7 +20,6 @@ coin_state = {
     "BCH-USDT": {"active": False, "level": 1, "entry_price": None},
 }
 
-
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
@@ -26,12 +30,51 @@ def send_telegram_message(message):
     response = requests.post(url, json=payload)
     print("[TELEGRAM]", response.status_code, "-", response.text)
 
+def generate_signature(timestamp, method, request_path, body, secret_key):
+    message = f'{timestamp}{method}{request_path}{body}'
+    mac = hmac.new(bytes(secret_key, encoding='utf-8'), bytes(message, encoding='utf-8'), digestmod=hashlib.sha256)
+    return base64.b64encode(mac.digest()).decode()
 
 def place_order(symbol, side, amount):
-    # Đây là demo - thực tế nên dùng OKX Demo API
-    print(f"[ORDER DEMO] Gửi lệnh {side.upper()} {symbol} với số tiền {amount} USDT")
-    return {"status": "success", "side": side, "symbol": symbol, "amount": amount}
+    base_url = "https://www.okx.com"
+    endpoint = "/api/v5/trade/order"
 
+    symbol_map = {
+        "BTC-USDT": "BTC-USDT-SWAP",
+        "BCH-USDT": "BCH-USDT-SWAP",
+        "AAVE-USDT": "AAVE-USDT-SWAP"
+    }
+    instId = symbol_map.get(symbol, symbol)
+
+    timestamp = str(time.time())
+    body = {
+        "instId": instId,
+        "tdMode": "cross",
+        "side": side,
+        "ordType": "market",
+        "sz": str(amount)
+    }
+    body_json = json.dumps(body)
+
+    signature = generate_signature(
+        timestamp,
+        "POST",
+        endpoint,
+        body_json,
+        os.getenv("OKX_API_SECRET")
+    )
+
+    headers = {
+        "OK-ACCESS-KEY": os.getenv("OKX_API_KEY"),
+        "OK-ACCESS-SIGN": signature,
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": os.getenv("OKX_API_PASSPHRASE"),
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(base_url + endpoint, headers=headers, data=body_json)
+    print("[OKX ORDER]", response.status_code, response.text)
+    return response.json()
 
 @app.route('/webhook-demo', methods=['POST'])
 def webhook_demo():
@@ -91,9 +134,7 @@ def webhook_demo():
 
     # Ghi log phản hồi ra console để kiểm tra
     print("[ORDER RESPONSE]", order_response)
-
     return "OK", 200
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
