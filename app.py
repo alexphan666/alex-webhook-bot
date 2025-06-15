@@ -9,13 +9,9 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# Lấy biến môi trường Telegram & OKX
+# Token Telegram và chat_id
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-OKX_API_KEY = os.getenv("OKX_API_KEY")
-OKX_API_SECRET = os.getenv("OKX_API_SECRET")
-OKX_API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE")
 
 # Trạng thái từng coin
 coin_state = {
@@ -24,6 +20,7 @@ coin_state = {
     "BCH-USDT": {"active": False, "level": 1, "entry_price": None},
 }
 
+
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
@@ -31,13 +28,18 @@ def send_telegram_message(message):
         "text": message,
         "parse_mode": "HTML"
     }
-    response = requests.post(url, json=payload)
-    print("[TELEGRAM]", response.status_code, "-", response.text)
+    try:
+        response = requests.post(url, json=payload)
+        print("[TELEGRAM]", response.status_code, "-", response.text)
+    except Exception as e:
+        print("[TELEGRAM ERROR]", e)
+
 
 def generate_signature(timestamp, method, request_path, body, secret_key):
     message = f'{timestamp}{method}{request_path}{body}'
-    mac = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), digestmod=hashlib.sha256)
+    mac = hmac.new(bytes(secret_key, encoding='utf-8'), bytes(message, encoding='utf-8'), digestmod=hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
+
 
 def place_order(symbol, side, amount):
     base_url = "https://www.okx.com"
@@ -60,31 +62,35 @@ def place_order(symbol, side, amount):
     }
     body_json = json.dumps(body)
 
-    try:
-        signature = generate_signature(
-            timestamp,
-            "POST",
-            endpoint,
-            body_json,
-            OKX_API_SECRET
-        )
-    except Exception as e:
-        return {"error": str(e)}
+    api_secret = os.getenv("OKX_API_SECRET_DEMO")
+    api_key = os.getenv("OKX_API_KEY_DEMO")
+    api_passphrase = os.getenv("OKX_API_PASSPHRASE_DEMO")
 
-    headers = {
-        "OK-ACCESS-KEY": OKX_API_KEY,
-        "OK-ACCESS-SIGN": signature,
-        "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS-PASSPHRASE": OKX_API_PASSPHRASE,
-        "Content-Type": "application/json"
-    }
+    if not all([api_secret, api_key, api_passphrase]):
+        return {"error": "Missing OKX demo API credentials."}
 
     try:
+        signature = generate_signature(timestamp, "POST", endpoint, body_json, api_secret)
+
+        headers = {
+            "OK-ACCESS-KEY": api_key,
+            "OK-ACCESS-SIGN": signature,
+            "OK-ACCESS-TIMESTAMP": timestamp,
+            "OK-ACCESS-PASSPHRASE": api_passphrase,
+            "Content-Type": "application/json"
+        }
+
         response = requests.post(base_url + endpoint, headers=headers, data=body_json)
         print("[OKX ORDER]", response.status_code, response.text)
-        return response.json()
+
+        try:
+            return response.json()
+        except Exception as e:
+            return {"error": str(e)}
+
     except Exception as e:
         return {"error": str(e)}
+
 
 @app.route('/webhook-demo', methods=['POST'])
 def webhook_demo():
@@ -99,7 +105,7 @@ def webhook_demo():
     coin = data.get("coin") or data.get("symbol")
 
     if not signal or not coin:
-        send_telegram_message("❌ Thiếu signal hoặc coin")
+        send_telegram_message("❌ Thiếu tín hiệu hoặc coin")
         return "Missing fields", 400
 
     symbol_map = {
@@ -112,7 +118,6 @@ def webhook_demo():
         send_telegram_message(f"⚠️ Coin không hỗ trợ: {coin}")
         return "Unsupported coin", 400
 
-    # Lấy trạng thái bậc lệnh
     level = coin_state[symbol]["level"]
     if level == 1:
         amount = 200
@@ -122,9 +127,7 @@ def webhook_demo():
         amount = 500
     else:
         amount = 200
-    amount = str(amount)
 
-    # Xác định hướng lệnh
     if signal.lower() == "buy":
         side = "buy"
     elif signal.lower() == "sell":
@@ -133,24 +136,19 @@ def webhook_demo():
         send_telegram_message(f"❌ Tín hiệu không hợp lệ: {signal}")
         return "Invalid signal", 400
 
-    # Gửi lệnh lên OKX DEMO
     order_response = place_order(symbol, side, amount)
 
-    # Kiểm tra lỗi từ OKX
     if "error" in order_response:
-        error_detail = order_response.get("error", "Không rõ lỗi")
-        send_telegram_message(f"❌ Gửi lệnh DEMO thất bại: {symbol} - {side.upper()} {amount} USDT\nChi tiết: {error_detail}")
-    return "Order failed", 500
+        send_telegram_message(f"❌ Gửi lệnh DEMO thất bại: {symbol} - {side.upper()} {amount} USDT\nChi tiết: {order_response}")
+        return "Order failed", 500
 
-    # Cập nhật trạng thái coin
     coin_state[symbol]["active"] = True
     coin_state[symbol]["entry_price"] = 9999  # Placeholder
 
-    # Gửi thông báo thành công
     send_telegram_message(f"✅ Đã gửi lệnh DEMO {side.upper()} {symbol} - {amount} USDT")
-
     print("[ORDER RESPONSE]", order_response)
     return "OK", 200
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
