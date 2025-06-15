@@ -1,6 +1,3 @@
-Buy Bitcoin & Crypto | Crypto Exchange, App & Wallet
-OKX - Buy BTC, ETH, XRP and more on OKX, a leading crypto exchange – explore Web3, invest in DeFi and NFTs. Register now and experience the future of finance.
-
 import os
 import time
 import base64
@@ -12,9 +9,13 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# Token Telegram và chat_id (nên để ở biến môi trường)
+# Lấy biến môi trường Telegram & OKX
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+OKX_API_KEY = os.getenv("OKX_API_KEY")
+OKX_API_SECRET = os.getenv("OKX_API_SECRET")
+OKX_API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE")
 
 # Trạng thái từng coin
 coin_state = {
@@ -30,11 +31,8 @@ def send_telegram_message(message):
         "text": message,
         "parse_mode": "HTML"
     }
-    try:
-        response = requests.post(url, json=payload)
-        print("[TELEGRAM]", response.status_code, "-", response.text)
-    except Exception as e:
-        print("[TELEGRAM ERROR]", str(e))
+    response = requests.post(url, json=payload)
+    print("[TELEGRAM]", response.status_code, "-", response.text)
 
 def generate_signature(timestamp, method, request_path, body, secret_key):
     message = f'{timestamp}{method}{request_path}{body}'
@@ -62,33 +60,22 @@ def place_order(symbol, side, amount):
     }
     body_json = json.dumps(body)
 
-    # Lấy API Key từ biến môi trường
-    api_key = os.getenv("OKX_API_KEY")
-    api_secret = os.getenv("OKX_API_SECRET")
-    passphrase = os.getenv("OKX_API_PASSPHRASE")
-
-    # Kiểm tra biến môi trường
-    if not all([api_key, api_secret, passphrase]):
-        error_msg = "❌ Thiếu biến môi trường OKX_API_KEY / OKX_API_SECRET / OKX_API_PASSPHRASE"
-        print(error_msg)
-        return {"error": error_msg}
-
     try:
         signature = generate_signature(
             timestamp,
             "POST",
             endpoint,
             body_json,
-            api_secret
+            OKX_API_SECRET
         )
     except Exception as e:
-        return {"error": f"Lỗi tạo chữ ký: {e}"}
+        return {"error": str(e)}
 
     headers = {
-        "OK-ACCESS-KEY": api_key,
+        "OK-ACCESS-KEY": OKX_API_KEY,
         "OK-ACCESS-SIGN": signature,
         "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS-PASSPHRASE": passphrase,
+        "OK-ACCESS-PASSPHRASE": OKX_API_PASSPHRASE,
         "Content-Type": "application/json"
     }
 
@@ -125,9 +112,16 @@ def webhook_demo():
         send_telegram_message(f"⚠️ Coin không hỗ trợ: {coin}")
         return "Unsupported coin", 400
 
-    # Tính số tiền theo bậc
+    # Lấy trạng thái bậc lệnh
     level = coin_state[symbol]["level"]
-    amount = 200 if level == 1 else 350 if level == 2 else 500
+    if level == 1:
+        amount = 200
+    elif level == 2:
+        amount = 350
+    elif level == 3:
+        amount = 500
+    else:
+        amount = 200
     amount = str(amount)
 
     # Xác định hướng lệnh
@@ -139,19 +133,20 @@ def webhook_demo():
         send_telegram_message(f"❌ Tín hiệu không hợp lệ: {signal}")
         return "Invalid signal", 400
 
-    # Gửi lệnh
+    # Gửi lệnh lên OKX DEMO
+    order_response = place_order(symbol, side, amount)
 
-order_response = place_order(symbol, side, amount)
-
+    # Kiểm tra lỗi từ OKX
     if "error" in order_response:
-        send_telegram_message(f"❌ Gửi lệnh DEMO thất bại: {symbol} - {side.upper()} {amount} USDT\nChi tiết: {order_response}")
-        return "Order failed", 500
+        error_detail = order_response.get("error", "Không rõ lỗi")
+        send_telegram_message(f"❌ Gửi lệnh DEMO thất bại: {symbol} - {side.upper()} {amount} USDT\nChi tiết: {error_detail}")
+    return "Order failed", 500
 
-    # Cập nhật trạng thái
+    # Cập nhật trạng thái coin
     coin_state[symbol]["active"] = True
     coin_state[symbol]["entry_price"] = 9999  # Placeholder
 
-    # Gửi thông báo
+    # Gửi thông báo thành công
     send_telegram_message(f"✅ Đã gửi lệnh DEMO {side.upper()} {symbol} - {amount} USDT")
 
     print("[ORDER RESPONSE]", order_response)
