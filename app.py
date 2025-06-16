@@ -35,6 +35,10 @@ def send_telegram_message(message):
     except Exception as e:
         print("[TELEGRAM ERROR]", str(e))
 
+# === CHUYỂN JSON DỮ LIỆU SANG CHUỖI ===
+def json_string(data):
+    return json.dumps(data, separators=(',', ':'))
+
 # === HÀM TẠO CHỮ KÝ OKX ===
 def create_okx_headers(method, path, body=""):
     timestamp = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
@@ -48,12 +52,8 @@ def create_okx_headers(method, path, body=""):
         "OK-ACCESS-TIMESTAMP": timestamp,
         "OK-ACCESS-PASSPHRASE": OKX_API_PASSPHRASE,
         "Content-Type": "application/json",
-        "x-simulated-trading": "1"  # ⚠️ Bắt buộc với tài khoản demo
+        "x-simulated-trading": "1"  # ✅ Bật chế độ demo
     }
-
-# === CHUYỂN JSON SANG CHUỖI ===
-def json_string(data):
-    return json.dumps(data, separators=(',', ':'))
 
 # === HÀM ĐẶT LỆNH GIAO DỊCH ===
 def place_order(symbol, side, qty):
@@ -82,8 +82,15 @@ def place_order(symbol, side, qty):
         }
         order_body = json_string(order_data)
         headers = create_okx_headers("POST", path, body=order_body)
-        order_res = requests.post(url, headers=headers, data=order_body).json()
-        print("[ORDER RESULT]", order_res)
+
+        order_raw = requests.post(url, headers=headers, data=order_body)
+        print("[ORDER RAW RESPONSE]", order_raw.status_code, order_raw.text)
+
+        if order_raw.status_code != 200:
+            raise Exception(f"HTTP {order_raw.status_code}: {order_raw.text}")
+
+        order_res = order_raw.json()
+        print("[ORDER RESULT JSON]", order_res)
 
         if order_res.get("code") != "0":
             raise Exception(order_res.get("msg", "Đặt lệnh thất bại"))
@@ -100,7 +107,7 @@ def place_order(symbol, side, qty):
             pos_side = "short"
             opp_side = "buy"
 
-        # 5. Đặt TP trailing stop
+        # 5. Đặt trailing TP
         tp_data = {
             "instId": symbol,
             "tdMode": "isolated",
@@ -112,7 +119,8 @@ def place_order(symbol, side, qty):
         }
         tp_body = json_string(tp_data)
         headers_tp = create_okx_headers("POST", path, body=tp_body)
-        requests.post(url, headers=headers_tp, data=tp_body)
+        tp_res = requests.post(url, headers=headers_tp, data=tp_body)
+        print("[TP RESPONSE]", tp_res.status_code, tp_res.text)
 
         # 6. Đặt SL cố định
         sl_data = {
@@ -126,7 +134,8 @@ def place_order(symbol, side, qty):
         }
         sl_body = json_string(sl_data)
         headers_sl = create_okx_headers("POST", path, body=sl_body)
-        requests.post(url, headers=headers_sl, data=sl_body)
+        sl_res = requests.post(url, headers=headers_sl, data=sl_body)
+        print("[SL RESPONSE]", sl_res.status_code, sl_res.text)
 
         return f"✅ Đã vào lệnh {side.upper()} {symbol} {qty} USDT\nGiá: {mark_price}\nTP trailing 1%\nSL cố định: {sl_price}"
 
@@ -149,10 +158,13 @@ def webhook():
         side = data.get("side")
         qty = data.get("qty")
 
+        # Gửi tín hiệu nhận được
         send_telegram_message(f"📈 Đã nhận tín hiệu: {side.upper()} {symbol} - {qty} USDT")
 
+        # Thực hiện đặt lệnh demo
         result = place_order(symbol, side, qty)
 
+        # Gửi kết quả về Telegram
         send_telegram_message(result)
 
         return jsonify({"status": "ok", "message": result}), 200
