@@ -19,6 +19,8 @@ BASE_URL = "https://www.okx.com"  # Hoặc URL testnet nếu dùng demo
 # Telegram bot
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+print(f"DEBUG TELEGRAM_TOKEN: {TELEGRAM_TOKEN}")
+print(f"DEBUG TELEGRAM_CHAT_ID: {CHAT_ID}")
 bot = telegram.Bot(token=TELEGRAM_TOKEN)
 
 def send_telegram_message(text):
