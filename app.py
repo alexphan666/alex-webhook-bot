@@ -1,154 +1,119 @@
+from flask import Flask, request, jsonify
 import os
-import time
-import base64
+import requests
 import hmac
 import hashlib
+import base64
 import json
-import requests
-from flask import Flask, request
+import time
 
 app = Flask(__name__)
 
-# Token Telegram và chat_id
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# Trạng thái từng coin
-coin_state = {
-    "AAVE-USDT": {"active": False, "level": 1, "entry_price": None},
-    "BTC-USDT": {"active": False, "level": 1, "entry_price": None},
-    "BCH-USDT": {"active": False, "level": 1, "entry_price": None},
-}
-
-
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
-    }
-    try:
-        response = requests.post(url, json=payload)
-        print("[TELEGRAM]", response.status_code, "-", response.text)
-    except Exception as e:
-        print("[TELEGRAM ERROR]", e)
-
-
-def generate_signature(timestamp, method, request_path, body, secret_key):
+# Hàm tạo chữ ký OKX
+def generate_okx_signature(timestamp, method, request_path, body, secret_key):
     message = f'{timestamp}{method}{request_path}{body}'
-    mac = hmac.new(bytes(secret_key, encoding='utf-8'), bytes(message, encoding='utf-8'), digestmod=hashlib.sha256)
+    mac = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), digestmod=hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
-
-def place_order(symbol, side, amount):
-    base_url = "https://www.okx.com"
-    endpoint = "/api/v5/trade/order"
-
-    symbol_map = {
-        "BTC-USDT": "BTC-USDT-SWAP",
-        "BCH-USDT": "BCH-USDT-SWAP",
-        "AAVE-USDT": "AAVE-USDT-SWAP"
-    }
-    instId = symbol_map.get(symbol, symbol)
-
-    timestamp = str(time.time())
-    body = {
-        "instId": instId,
-        "tdMode": "cross",
-        "side": side,
-        "ordType": "market",
-        "sz": str(amount)
-    }
-    body_json = json.dumps(body)
-
-    api_secret = os.getenv("OKX_API_SECRET_DEMO")
+# Hàm gửi lệnh demo lên OKX
+def send_demo_order(symbol, side, usdt_amount):
     api_key = os.getenv("OKX_API_KEY_DEMO")
-    api_passphrase = os.getenv("OKX_API_PASSPHRASE_DEMO")
+    api_secret = os.getenv("OKX_API_SECRET_DEMO")
+    passphrase = os.getenv("OKX_API_PASSPHRASE_DEMO")
 
-    if not all([api_secret, api_key, api_passphrase]):
+    if not all([api_key, api_secret, passphrase]):
         return {"error": "Missing OKX demo API credentials."}
 
+    url = "https://www.okx.com/api/v5/trade/order"
+    method = "POST"
+    request_path = "/api/v5/trade/order"
+
+    payload = {
+        "instId": symbol,
+        "tdMode": "cash",
+        "side": side,
+        "ordType": "market",
+        "ccy": "USDT",
+        "sz": str(usdt_amount)
+    }
+    body = json.dumps(payload)
+
+    timestamp = str(time.time())
+    signature = generate_okx_signature(timestamp, method, request_path, body, api_secret)
+
+    headers = {
+        "Content-Type": "application/json",
+        "OK-ACCESS-KEY": api_key,
+        "OK-ACCESS-SIGN": signature,
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": passphrase,
+        "x-simulated-trading": "1"
+    }
+
     try:
-        signature = generate_signature(timestamp, "POST", endpoint, body_json, api_secret)
-
-        headers = {
-            "OK-ACCESS-KEY": api_key,
-            "OK-ACCESS-SIGN": signature,
-            "OK-ACCESS-TIMESTAMP": timestamp,
-            "OK-ACCESS-PASSPHRASE": api_passphrase,
-            "Content-Type": "application/json"
-        }
-
-        response = requests.post(base_url + endpoint, headers=headers, data=body_json)
-        print("[OKX ORDER]", response.status_code, response.text)
+        response = requests.post(url, headers=headers, data=body)
+        print("🔁 OKX Status:", response.status_code)
+        print("🔁 OKX Response:", response.text)
 
         try:
             return response.json()
-        except Exception as e:
-            return {"error": str(e)}
+        except json.JSONDecodeError:
+            return {"error": "Response is not JSON", "detail": response.text}
+    except Exception as e:
+        return {"error": "Request exception", "detail": str(e)}
+
+# Hàm gửi Telegram
+def send_telegram_message(message):
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("Thiếu TELEGRAM_BOT_TOKEN hoặc TELEGRAM_CHAT_ID")
+        return
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = {"chat_id": chat_id, "text": message}
+    try:
+        response = requests.post(url, data=data)
+        print("📬 TELEGRAM", response.status_code, "-", response.text)
+    except Exception as e:
+        print("Telegram error:", e)
+
+# Webhook endpoint
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    try:
+        data = request.get_json()
+        print("📥 Webhook nhận:", data)
+
+        # Giả sử TradingView gửi theo dạng:
+        # {
+        #   "symbol": "BTC-USDT",
+        #   "side": "buy",
+        #   "qty": 200
+        # }
+
+        symbol = data.get("symbol")
+        side = data.get("side")
+        qty = data.get("qty")
+
+        if not symbol or not side or not qty:
+            return jsonify({"error": "Thiếu thông tin"}), 400
+
+        result = send_demo_order(symbol, side, qty)
+
+        if "error" in result:
+            msg = f"❌ Gửi lệnh DEMO thất bại: {symbol} - {side.upper()} {qty} USDT\nChi tiết: {result}"
+            send_telegram_message(msg)
+            return jsonify(result), 500
+
+        msg = f"✅ Gửi lệnh DEMO thành công: {symbol} - {side.upper()} {qty} USDT\nChi tiết: {result}"
+        send_telegram_message(msg)
+        return jsonify({"status": "ok", "result": result}), 200
 
     except Exception as e:
-        return {"error": str(e)}
+        error_msg = f"❌ Lỗi xử lý webhook: {str(e)}"
+        send_telegram_message(error_msg)
+        return jsonify({"error": str(e)}), 500
 
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.get_json()
-    print("[WEBHOOK DEMO]", data)
-
-    if not data:
-        send_telegram_message("❌ Không nhận được JSON từ TradingView")
-        return "No data", 400
-
-    signal = data.get("signal")
-    coin = data.get("coin") or data.get("symbol")
-
-    if not signal or not coin:
-        send_telegram_message("❌ Thiếu tín hiệu hoặc coin")
-        return "Missing fields", 400
-
-    symbol_map = {
-        "BTC": "BTC-USDT",
-        "AAVE": "AAVE-USDT",
-        "BCH": "BCH-USDT"
-    }
-    symbol = symbol_map.get(coin.upper())
-    if not symbol:
-        send_telegram_message(f"⚠️ Coin không hỗ trợ: {coin}")
-        return "Unsupported coin", 400
-
-    level = coin_state[symbol]["level"]
-    if level == 1:
-        amount = 200
-    elif level == 2:
-        amount = 350
-    elif level == 3:
-        amount = 500
-    else:
-        amount = 200
-
-    if signal.lower() == "buy":
-        side = "buy"
-    elif signal.lower() == "sell":
-        side = "sell"
-    else:
-        send_telegram_message(f"❌ Tín hiệu không hợp lệ: {signal}")
-        return "Invalid signal", 400
-
-    order_response = place_order(symbol, side, amount)
-
-    if "error" in order_response:
-        send_telegram_message(f"❌ Gửi lệnh DEMO thất bại: {symbol} - {side.upper()} {amount} USDT\nChi tiết: {order_response}")
-        return "Order failed", 500
-
-    coin_state[symbol]["active"] = True
-    coin_state[symbol]["entry_price"] = 9999  # Placeholder
-
-    send_telegram_message(f"✅ Đã gửi lệnh DEMO {side.upper()} {symbol} - {amount} USDT")
-    print("[ORDER RESPONSE]", order_response)
-    return "OK", 200
-
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=10000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
