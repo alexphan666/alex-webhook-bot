@@ -1,112 +1,93 @@
 from flask import Flask, request, jsonify
-import os
 import requests
-import hmac
-import hashlib
-import base64
+import os
 import json
-import time
+from dotenv import load_dotenv
 
+# Load biến môi trường
+load_dotenv()
+
+# Thiết lập Flask
 app = Flask(__name__)
 
-# Hàm tạo chữ ký OKX
-def generate_okx_signature(timestamp, method, request_path, body, secret_key):
-    message = f'{timestamp}{method}{request_path}{body}'
-    mac = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), digestmod=hashlib.sha256)
-    return base64.b64encode(mac.digest()).decode()
+# Lấy thông tin từ .env
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+OKX_API_KEY = os.getenv("OKX_API_KEY_DEMO")
+OKX_SECRET_KEY = os.getenv("OKX_SECRET_KEY_DEMO")
+OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE_DEMO")
 
-# Hàm gửi lệnh demo lên OKX
-def send_demo_order(symbol, side, usdt_amount):
-    api_key = os.getenv("OKX_API_KEY_DEMO")
-    api_secret = os.getenv("OKX_API_SECRET_DEMO")
-    passphrase = os.getenv("OKX_API_PASSPHRASE_DEMO")
+# Gửi tin nhắn Telegram
+def send_telegram_message(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message
+    }
+    try:
+        response = requests.post(url, json=payload)
+        print("[TELEGRAM]", response.status_code, "-", response.text)
+    except Exception as e:
+        print("[TELEGRAM ERROR]", str(e))
 
-    if not all([api_key, api_secret, passphrase]):
+# Gửi lệnh demo lên OKX
+def send_demo_order(symbol, side, qty):
+    if not OKX_API_KEY or not OKX_SECRET_KEY or not OKX_PASSPHRASE:
         return {"error": "Missing OKX demo API credentials."}
 
     url = "https://www.okx.com/api/v5/trade/order"
-    method = "POST"
-    request_path = "/api/v5/trade/order"
+
+    headers = {
+        "Content-Type": "application/json",
+        "OK-ACCESS-KEY": OKX_API_KEY,
+        "OK-ACCESS-SIGN": "",  # Nếu cần sign thật phải thêm
+        "OK-ACCESS-TIMESTAMP": "",
+        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE
+    }
 
     payload = {
         "instId": symbol,
         "tdMode": "cash",
         "side": side,
         "ordType": "market",
-        "ccy": "USDT",
-        "sz": str(usdt_amount)
-    }
-    body = json.dumps(payload)
-
-    timestamp = str(time.time())
-    signature = generate_okx_signature(timestamp, method, request_path, body, api_secret)
-
-    headers = {
-        "Content-Type": "application/json",
-        "OK-ACCESS-KEY": api_key,
-        "OK-ACCESS-SIGN": signature,
-        "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS-PASSPHRASE": passphrase,
-        "x-simulated-trading": "1"
+        "sz": str(qty)
     }
 
     try:
-        response = requests.post(url, headers=headers, data=body)
-        print("🔁 OKX Status:", response.status_code)
-        print("🔁 OKX Response:", response.text)
-
+        response = requests.post(url, headers=headers, json=payload)
         try:
             return response.json()
         except json.JSONDecodeError:
-            return {"error": "Response is not JSON", "detail": response.text}
+            return {
+                "error": "Non-JSON response from OKX",
+                "status_code": response.status_code,
+                "text": response.text[:500]  # chỉ gửi 500 ký tự đầu nếu là HTML
+            }
     except Exception as e:
-        return {"error": "Request exception", "detail": str(e)}
+        return {"error": str(e)}
 
-# Hàm gửi Telegram
-def send_telegram_message(message):
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    if not token or not chat_id:
-        print("Thiếu TELEGRAM_BOT_TOKEN hoặc TELEGRAM_CHAT_ID")
-        return
-
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = {"chat_id": chat_id, "text": message}
-    try:
-        response = requests.post(url, data=data)
-        print("📬 TELEGRAM", response.status_code, "-", response.text)
-    except Exception as e:
-        print("Telegram error:", e)
-
-# Webhook endpoint
+# Webhook nhận tín hiệu từ TradingView
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
         data = request.get_json()
-        print("📥 Webhook nhận:", data)
-
-        # Giả sử TradingView gửi theo dạng:
-        # {
-        #   "symbol": "BTC-USDT",
-        #   "side": "buy",
-        #   "qty": 200
-        # }
+        print("[WEBHOOK]", data)
 
         symbol = data.get("symbol")
         side = data.get("side")
-        qty = data.get("qty")
+        qty = data.get("qty", 200)
 
-        if not symbol or not side or not qty:
-            return jsonify({"error": "Thiếu thông tin"}), 400
+        if not symbol or not side:
+            return jsonify({"error": "Thiếu symbol hoặc side"}), 400
 
         result = send_demo_order(symbol, side, qty)
 
         if "error" in result:
-            msg = f"❌ Gửi lệnh DEMO thất bại: {symbol} - {side.upper()} {qty} USDT\nChi tiết: {result}"
+            msg = f"❌ Gửi lệnh DEMO thất bại: {symbol} - {side.upper()} {qty} USDT\nLý do: {result.get('error', 'Không rõ')}"
             send_telegram_message(msg)
             return jsonify(result), 500
 
-        msg = f"✅ Gửi lệnh DEMO thành công: {symbol} - {side.upper()} {qty} USDT\nChi tiết: {result}"
+        msg = f"✅ Gửi lệnh DEMO thành công: {symbol} - {side.upper()} {qty} USDT"
         send_telegram_message(msg)
         return jsonify({"status": "ok", "result": result}), 200
 
@@ -115,5 +96,6 @@ def webhook():
         send_telegram_message(error_msg)
         return jsonify({"error": str(e)}), 500
 
+# Chạy Flask nếu cần
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)
