@@ -92,8 +92,8 @@ def place_order(symbol, side, amount):
         return {"error": str(e)}
 
 
-@app.route('/webhook-demo', methods=['POST'])
-def webhook_demo():
+@app.route('/webhook', methods=['POST'])
+def webhook():
     data = request.get_json()
     print("[WEBHOOK DEMO]", data)
 
