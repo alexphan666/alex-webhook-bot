@@ -8,7 +8,7 @@ import hashlib
 import json
 from dotenv import load_dotenv
 
-# === LOAD .env ===
+# Load biến môi trường
 load_dotenv()
 
 app = Flask(__name__)
@@ -35,7 +35,7 @@ def send_telegram_message(message):
     except Exception as e:
         print("[TELEGRAM ERROR]", str(e))
 
-# === HÀM TẠO HEADER OKX (CÓ X-SIMULATED) ===
+# === HÀM TẠO CHỮ KÝ OKX ===
 def create_okx_headers(method, path, body=""):
     timestamp = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
     prehash = f"{timestamp}{method}{path}{body}"
@@ -48,23 +48,27 @@ def create_okx_headers(method, path, body=""):
         "OK-ACCESS-TIMESTAMP": timestamp,
         "OK-ACCESS-PASSPHRASE": OKX_API_PASSPHRASE,
         "Content-Type": "application/json",
-        "x-simulated-trading": "1"   # ⚠️ Bắt buộc để chạy DEMO
+        "x-simulated-trading": "1"  # ⚠️ Bắt buộc với tài khoản demo
     }
 
-# === ĐẶT LỆNH GIAO DỊCH ===
+# === CHUYỂN JSON SANG CHUỖI ===
+def json_string(data):
+    return json.dumps(data, separators=(',', ':'))
+
+# === HÀM ĐẶT LỆNH GIAO DỊCH ===
 def place_order(symbol, side, qty):
     try:
-        # Lấy giá thị trường
+        # 1. Lấy giá thị trường
         res = requests.get(f"{OKX_BASE_URL}/api/v5/market/ticker?instId={symbol}")
         data = res.json()
         mark_price = float(data['data'][0]['last'])
 
-        # Tính khối lượng BTC từ USDT
+        # 2. Tính số lượng coin
         notional = float(qty)
         leverage = 20
         base_qty = round(notional / mark_price * leverage, 4)
 
-        # Gửi lệnh thị trường
+        # 3. Gửi lệnh thị trường
         path = "/api/v5/trade/order"
         url = f"{OKX_BASE_URL}{path}"
         direction = "buy" if side.lower() == "buy" else "sell"
@@ -76,53 +80,55 @@ def place_order(symbol, side, qty):
             "ordType": "market",
             "sz": str(base_qty)
         }
-
-        headers = create_okx_headers("POST", path, body=json.dumps(order_data, separators=(',', ':')))
-        order_res = requests.post(url, headers=headers, json=order_data).json()
+        order_body = json_string(order_data)
+        headers = create_okx_headers("POST", path, body=order_body)
+        order_res = requests.post(url, headers=headers, data=order_body).json()
         print("[ORDER RESULT]", order_res)
 
         if order_res.get("code") != "0":
             raise Exception(order_res.get("msg", "Đặt lệnh thất bại"))
 
-        # Tính TP và SL
+        # 4. Tính TP & SL
         if side.lower() == "buy":
             tp_price = round(mark_price * 1.01, 2)
             sl_price = round(mark_price * 0.985, 2)
             pos_side = "long"
-            tp_side = "sell"
+            opp_side = "sell"
         else:
             tp_price = round(mark_price * 0.99, 2)
             sl_price = round(mark_price * 1.015, 2)
             pos_side = "short"
-            tp_side = "buy"
+            opp_side = "buy"
 
-        # Trailing TP
+        # 5. Đặt TP trailing stop
         tp_data = {
             "instId": symbol,
             "tdMode": "isolated",
-            "side": tp_side,
+            "side": opp_side,
             "ordType": "move_order_stop",
             "posSide": pos_side,
             "sz": str(base_qty),
-            "trailAmt": str(round(mark_price * 0.01, 2))  # trailing 1%
+            "trailAmt": str(round(mark_price * 0.01, 2))
         }
-        headers_tp = create_okx_headers("POST", path, body=json.dumps(tp_data, separators=(',', ':')))
-        requests.post(url, headers=headers_tp, json=tp_data)
+        tp_body = json_string(tp_data)
+        headers_tp = create_okx_headers("POST", path, body=tp_body)
+        requests.post(url, headers=headers_tp, data=tp_body)
 
-        # SL cố định
+        # 6. Đặt SL cố định
         sl_data = {
             "instId": symbol,
             "tdMode": "isolated",
-            "side": tp_side,
+            "side": opp_side,
             "ordType": "trigger",
             "triggerPx": str(sl_price),
             "posSide": pos_side,
             "sz": str(base_qty)
         }
-        headers_sl = create_okx_headers("POST", path, body=json.dumps(sl_data, separators=(',', ':')))
-        requests.post(url, headers=headers_sl, json=sl_data)
+        sl_body = json_string(sl_data)
+        headers_sl = create_okx_headers("POST", path, body=sl_body)
+        requests.post(url, headers=headers_sl, data=sl_body)
 
-        return f"✅ Đã vào lệnh {side.upper()} {symbol} {qty} USDT\nGiá: {mark_price} - TP trailing 1% - SL {sl_price}"
+        return f"✅ Đã vào lệnh {side.upper()} {symbol} {qty} USDT\nGiá: {mark_price}\nTP trailing 1%\nSL cố định: {sl_price}"
 
     except Exception as e:
         return f"❌ Lỗi khi đặt lệnh: {str(e)}"
