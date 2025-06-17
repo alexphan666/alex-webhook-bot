@@ -44,9 +44,8 @@ def place_order(symbol, side, qty):
         "tdMode": "isolated",
         "side": side,
         "ordType": "market",
-        "sz": str(qty),
         "posSide": "long" if side == "buy" else "short",
-        "lever": "20"
+        "sz": str(qty)
     })
 
     headers = {
