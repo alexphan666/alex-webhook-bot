@@ -7,13 +7,17 @@ import time
 import requests
 import telegram
 from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+
+# Load .env
+load_dotenv()
 
 # Load các biến môi trường
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 API_KEY = os.getenv("OKX_API_KEY")
 API_SECRET = os.getenv("OKX_API_SECRET")
-API_PASSPHRASE = os.getenv("OKX_PASSPHRASE")
+API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE")
 
 print("DEBUG TELEGRAM_TOKEN:", TELEGRAM_TOKEN)
 print("DEBUG TELEGRAM_CHAT_ID:", CHAT_ID)
@@ -30,8 +34,7 @@ def send_telegram_message(text):
 def sign_request(timestamp, method, request_path, body, secret_key):
     message = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(secret_key.encode(), message.encode(), hashlib.sha256)
-    d = mac.digest()
-    return base64.b64encode(d).decode()
+    return base64.b64encode(mac.digest()).decode()
 
 def place_order(symbol, side, qty):
     url = "https://www.okx.com/api/v5/trade/order"
