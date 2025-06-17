@@ -1,0 +1,13 @@
+# Bỏ qua file .env chứa thông tin nhạy cảm
+.env
+
+# Bỏ qua thư mục cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Bỏ môi trường ảo nếu có
+venv/
+.env/
+.venv/

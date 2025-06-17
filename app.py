@@ -3,16 +3,17 @@ import json
 import hmac
 import hashlib
 import base64
-import time
+import asyncio
 import requests
 import telegram
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
+from datetime import datetime, timezone
 
-# Load .env
+# Load biến môi trường từ .env
 load_dotenv()
 
-# Load các biến môi trường
+# Lấy các biến môi trường
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 API_KEY = os.getenv("OKX_API_KEY")
@@ -25,27 +26,34 @@ print("DEBUG TELEGRAM_CHAT_ID:", CHAT_ID)
 app = Flask(__name__)
 bot = telegram.Bot(token=TELEGRAM_TOKEN)
 
-def send_telegram_message(text):
+# Gửi tin nhắn Telegram
+async def send_telegram_message(text):
     try:
-        bot.send_message(chat_id=CHAT_ID, text=text)
+        await bot.send_message(chat_id=CHAT_ID, text=text)
     except Exception as e:
         print("Lỗi khi gửi Telegram:", e)
 
+# Ký yêu cầu gửi đến OKX
 def sign_request(timestamp, method, request_path, body, secret_key):
     message = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(secret_key.encode(), message.encode(), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
+# Gửi lệnh mua/bán đến OKX
 def place_order(symbol, side, qty):
     url = "https://www.okx.com/api/v5/trade/order"
-    timestamp = str(time.time())
+
+    # Sử dụng timestamp ISO 8601 UTC
+    timestamp = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
     body = json.dumps({
         "instId": symbol,
         "tdMode": "isolated",
         "side": side,
         "ordType": "market",
+        "sz": str(qty),
         "posSide": "long" if side == "buy" else "short",
-        "sz": str(qty)
+        "lever": "20"
     })
 
     headers = {
@@ -60,10 +68,12 @@ def place_order(symbol, side, qty):
     print("DEBUG response:", response.text)
     return response.json()
 
+# Route kiểm tra bot sống
 @app.route("/", methods=["GET"])
 def home():
     return "Webhook bot is running"
 
+# Route webhook từ TradingView
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
@@ -73,9 +83,11 @@ def webhook():
     side = data.get("side")
     qty = data.get("qty")
 
-    send_telegram_message(f"Nhận tín hiệu: {side.upper()} {qty} {symbol}")
+    asyncio.run(send_telegram_message(f"Nhận tín hiệu: {side.upper()} {qty} {symbol}"))
+
     response = place_order(symbol, side, qty)
-    send_telegram_message(f"Kết quả đặt lệnh: {response}")
+
+    asyncio.run(send_telegram_message(f"Kết quả đặt lệnh: {response}"))
 
     return jsonify({"status": "success", "response": response})
 
