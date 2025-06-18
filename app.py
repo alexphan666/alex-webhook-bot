@@ -8,27 +8,23 @@ import requests
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
-# --- Cấu hình ứng dụng và biến môi trường ---
+# --- Load biến môi trường ---
 load_dotenv()
 
-# Biến môi trường cho OKX
 API_KEY = os.getenv("OKX_API_KEY")
 API_SECRET = os.getenv("OKX_API_SECRET")
 API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE")
-
-# Webhook Discord URL
 DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1376064332852629514/5m43o513-HVIhtNlT2Q3BlAeW5GvE0a6GM8xtUTDOeUosjhgkmtJ5rzZoU4MyGJ0L9Ff"
 
-# Khởi tạo ứng dụng Flask
 app = Flask(__name__)
 
-# --- Hàm ký (sign) yêu cầu API OKX ---
+# --- Hàm ký yêu cầu OKX ---
 def sign_request(timestamp, method, request_path, body, secret_key):
     message = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(secret_key.encode(), message.encode(), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
-# --- Hàm gửi tin nhắn Discord ---
+# --- Gửi tin nhắn tới Discord ---
 def send_discord_message(text):
     try:
         payload = {"content": text}
@@ -36,10 +32,20 @@ def send_discord_message(text):
         response = requests.post(DISCORD_WEBHOOK_URL, headers=headers, json=payload)
         print("Discord response:", response.text)
     except Exception as e:
-        print(f"Lỗi khi gửi Discord: {e}")
+        print(f"Lỗi gửi Discord: {e}")
 
-# --- Hàm đặt lệnh trên OKX ---
-def place_order(symbol, side, qty):
+# --- Đặt lệnh OKX với 200 USDT ---
+def place_order(symbol, side):
+    # Lấy giá thị trường để tính số lượng mua theo 200 USDT
+    ticker_url = f"https://www.okx.com/api/v5/market/ticker?instId={symbol}"
+    try:
+        ticker_res = requests.get(ticker_url).json()
+        last_price = float(ticker_res['data'][0]['last'])
+        qty = round(200 / last_price, 4)  # làm tròn 4 chữ số thập phân
+    except Exception as e:
+        send_discord_message(f"Lỗi lấy giá thị trường: {e}")
+        return {"error": "Không lấy được giá thị trường"}
+
     url = "https://www.okx.com/api/v5/trade/order"
     timestamp = str(time.time())
     body = json.dumps({
@@ -57,13 +63,19 @@ def place_order(symbol, side, qty):
         "OK-ACCESS-TIMESTAMP": timestamp,
         "OK-ACCESS-PASSPHRASE": API_PASSPHRASE,
         "Content-Type": "application/json",
-        "x-simulated-trading": "1"  # Demo mode
+        "x-simulated-trading": "1"  # Dùng chế độ demo
     }
-    response = requests.post(url, headers=headers, data=body)
-    print("DEBUG response:", response.text)
-    return response.json()
 
-# --- Định nghĩa các route cho Flask app ---
+    response = requests.post(url, headers=headers, data=body)
+    print("=== OKX DEBUG ===")
+    print("Status:", response.status_code)
+    print("Body:", response.text)
+
+    try:
+        return response.json()
+    except Exception as e:
+        return {"error": f"Không parse được JSON: {e}"}
+
 @app.route("/", methods=["GET"])
 def home():
     return "Webhook bot is running"
@@ -75,17 +87,12 @@ def webhook():
 
     symbol = data.get("symbol")
     side = data.get("side")
-    qty = data.get("qty")
 
-    send_discord_message(f"Nhận tín hiệu: {side.upper()} {qty} {symbol}")
-    
-    # Gửi lệnh OKX
-    response = place_order(symbol, side, qty)
+    send_discord_message(f"\u2705 Nhận tín hiệu: {side.upper()} 200 USDT {symbol}")
+    result = place_order(symbol, side)
+    send_discord_message(f"\uD83D\uDCB3 Kết quả đặt lệnh: {result}")
 
-    # Gửi kết quả về Discord
-    send_discord_message(f"Kết quả đặt lệnh: {response}")
-
-    return jsonify({"status": "success", "response": response})
+    return jsonify({"status": "done", "result": result})
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
