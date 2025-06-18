@@ -57,7 +57,7 @@ def place_order(symbol, side, qty):
         "OK-ACCESS-TIMESTAMP": timestamp,
         "OK-ACCESS-PASSPHRASE": API_PASSPHRASE,
         "Content-Type": "application/json",
-        "x-simulated-trading": "1"
+        "x-simulated-trading": "1"  # Demo mode
     }
     response = requests.post(url, headers=headers, data=body)
     print("DEBUG response:", response.text)
@@ -77,8 +77,12 @@ def webhook():
     side = data.get("side")
     qty = data.get("qty")
 
-    send_discord_message(f"Nhận tín t\xedn hiệu: {side.upper()} {qty} {symbol}")
-    response = {"note": "Đã nhận tín hiệu nhưng KHÔNG gửi lệnh OKX vì bị Cloudflare block."}
+    send_discord_message(f"Nhận tín hiệu: {side.upper()} {qty} {symbol}")
+    
+    # Gửi lệnh OKX
+    response = place_order(symbol, side, qty)
+
+    # Gửi kết quả về Discord
     send_discord_message(f"Kết quả đặt lệnh: {response}")
 
     return jsonify({"status": "success", "response": response})
