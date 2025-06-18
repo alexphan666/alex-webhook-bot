@@ -100,4 +100,5 @@ def webhook():
     side = data.get("side")
 
     send_discord_message(f"✅ Nhận tín hiệu: {side.upper()} 200 USDT {symbol}")
-    result = place_o_
+    result = place_order(symbol, side)
+
