@@ -78,7 +78,7 @@ def webhook():
     qty = data.get("qty")
 
     send_discord_message(f"Nhận tín t\xedn hiệu: {side.upper()} {qty} {symbol}")
-    response = place_order(symbol, side, qty)
+    response = {"note": "Đã nhận tín hiệu nhưng KHÔNG gửi lệnh OKX vì bị Cloudflare block."}
     send_discord_message(f"Kết quả đặt lệnh: {response}")
 
     return jsonify({"status": "success", "response": response})
